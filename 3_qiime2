@@ -1,0 +1,232 @@
+#!/bin/bash
+
+###############################################################################
+# QIIME 2 + RESCRIPt: Criação de Banco NCBI 16S e Treinamento de Classificador
+###############################################################################
+
+# Caminho para diretório de saída
+OUTPUT_DIR="/mnt/d/ncbi_refseq06.25"
+mkdir -p "$OUTPUT_DIR"
+cd "$OUTPUT_DIR"
+
+echo "Iniciando construção do banco de dados 16S do NCBI com QIIME 2 + RESCRIPt..."
+
+# Ativar ambiente Conda
+source ~/anaconda3/etc/profile.d/conda.sh
+conda activate qiime2-amplicon-2024.10
+echo "Conda environment 'qiime2-amplicon-2024.10' ativado"
+
+# Etapa 1: Download de dados 16S do NCBI com RESCRIPt
+echo "Baixando sequências 16S RefSeq do NCBI..."
+
+qiime rescript get-ncbi-data \
+  --p-query '33175[BioProject] OR 33317[BioProject]' \
+  --o-sequences ncbi-refseqs-unfiltered.qza \
+  --o-taxonomy ncbi-refseqs-taxonomy-unfiltered.qza
+
+# Etapa 2: Filtragem por reinos (Bacteria, Archaea)
+echo "Filtrando para Bacteria e Archaea..."
+
+qiime taxa filter-seqs \
+  --i-sequences ncbi-refseqs-unfiltered.qza \
+  --i-taxonomy ncbi-refseqs-taxonomy-unfiltered.qza \
+  --p-include Bacteria,Archaea \
+  --o-filtered-sequences ncbi-refseqs-prokaryote.qza
+
+qiime rescript filter-taxa \
+  --i-taxonomy ncbi-refseqs-taxonomy-unfiltered.qza \
+  --m-ids-to-keep-file ncbi-refseqs-prokaryote.qza \
+  --o-filtered-taxonomy ncbi-refseqs-prok-taxonomy.qza
+
+# Etapa 3: Filtragem por comprimento específico
+echo "Filtrando sequências por comprimento por taxon..."
+
+qiime rescript filter-seqs-length-by-taxon \
+  --i-sequences ncbi-refseqs-prokaryote.qza \
+  --i-taxonomy ncbi-refseqs-prok-taxonomy.qza \
+  --p-labels Bacteria Archaea \
+  --p-min-lens 1200 1200 \
+  --p-max-lens 1700 1700 \
+  --o-filtered-seqs ncbi-refseqs.qza \
+  --o-discarded-seqs ncbi-refseqs-tooshort.qza
+
+echo "Aplicando filtro global de comprimento: 1200-1700 pb..."
+
+qiime rescript filter-seqs-length \
+  --i-sequences ncbi-refseqs.qza \
+  --p-global-min 1200 \
+  --p-global-max 1700 \
+  --p-threads 4 \
+  --o-filtered-seqs ncbi-refseqs-filtered.qza \
+  --o-discarded-seqs discart-ncbi-refseqs.qza
+
+# Etapa 4: Filtragem da taxonomia correspondente
+echo "🔍 Filtrando taxonomia correspondente às sequências finais..."
+
+qiime rescript filter-taxa \
+  --i-taxonomy ncbi-refseqs-prok-taxonomy.qza \
+  --m-ids-to-keep-file ncbi-refseqs-filtered.qza \
+  --o-filtered-taxonomy ncbi-refseqs-taxonomy.qza
+
+# Etapa 5: Treinamento e avaliação do classificador
+echo "Treinando classificador com RESCRIPt..."
+
+qiime rescript evaluate-fit-classifier \
+  --i-sequences ncbi-refseqs-filtered.qza \
+  --i-taxonomy ncbi-refseqs-taxonomy.qza \
+  --o-classifier ncbi-refseqs-16s-classifier.qza \
+  --o-evaluation ncbi-refseqs-16s-classifier-evaluation.qzv \
+  --o-observed-taxonomy ncbi-refseqs-16s-predicted-taxonomy.qza \
+  --p-n-jobs 4
+
+echo "Classificador treinado e avaliado com sucesso."
+
+
+###############################################################################
+# QIIME 2: Análise de amostras filtradas – Importação até Exportação
+###############################################################################
+
+# Caminho de trabalho
+WORKDIR="/mnt/d/Tata_seq/qiime2_analysis"
+mkdir -p "$WORKDIR"
+cd "$WORKDIR"
+
+# Etapa 1: Criar manifest file para importação
+echo "Gerando arquivo de manifesto para importação..."
+
+(
+  echo "sample-id,absolute-filepath,direction"
+  for f in /mnt/d/Tata_seq/filt_reads/nanofilt/*.fastq; do
+    sample=$(basename "$f" .fastq)
+    echo "$sample,$(realpath "$f"),forward"
+  done
+) > manifest.tsv
+
+# Etapa 2: Importação de dados filtrados
+echo "Importando dados para QIIME 2..."
+
+qiime tools import \
+  --type 'SampleData[SequencesWithQuality]' \
+  --input-path manifest.tsv \
+  --input-format SingleEndFastqManifestPhred33V2 \
+  --output-path demux-single.qza
+
+# Etapa 3: Dereplicação
+echo "Realizando dereplicação de sequências..."
+
+qiime vsearch dereplicate-sequences \
+  --i-sequences demux-single.qza \
+  --o-dereplicated-table table.qza \
+  --o-dereplicated-sequences rep-seqs.qza
+
+# Etapa 4: Remoção de quimeras
+echo "Removendo quimeras..."
+
+qiime vsearch uchime-denovo \ ## uchime-denovo pode nao observar nenhuma quimera, tentar com --uchime_ref
+  --i-table table.qza \
+  --i-sequences rep-seqs.qza \
+  --o-chimeras chimeras.qza \
+  --o-nonchimeras nonchimeras.qza \
+  --o-stats chimera-stats.qza
+
+echo "Rodando --uchime_ref"
+# Exportar para FASTA (se for usar fora do QIIME)
+#qiime tools export \
+#  --input-path /mnt/d/ncbi_refseq05.25/ncbi-refseqs-filtered.qza \
+#  --output-path ncbi-refseq
+
+#mv ncbi-refseq/dna-sequences.fasta ncbi-refseq/ncbi-refseqs.fasta
+
+#for fasta in fasta_parts/*.fasta; do
+#  base=$(basename "$fasta" .fasta)
+#  echo "Processando $base"
+
+#vsearch --uchime_ref "$fasta" \
+#        --db ncbi-refseq/ncbi-refseqs.fasta \
+#        --nonchimeras chimera_out/${base}_ncbi_nonchimeras.fasta \
+#        --chimeras chimera_out/${base}_ncbi_chimeras.fasta \
+#        --uchimeout chimera_out/${base}_ncbi_stats.txt \
+#        --threads 6
+#done
+
+qiime feature-table filter-features \
+  --i-table table.qza \
+  --m-metadata-file nonchimeras.qza \
+  --o-filtered-table table-nonchimeric.qza
+
+qiime feature-table filter-seqs \
+  --i-data rep-seqs.qza \
+  --m-metadata-file nonchimeras.qza \
+  --o-filtered-data rep-seqs-nonchimeric.qza
+
+# Etapa 5: Clustering de OTUs
+echo "Clusterizando OTUs a 89% de identidade..."
+# Pode tentar com "qiime vsearch cluster-features-de-novo", mas se os aruivos forem muito grandes, recomendamos: 
+
+qiime vsearch cluster-features-open-reference \
+  --i-table table-nonchimeric.qza \
+  --i-sequences rep-seqs-nonchimeric.qza \
+  --i-reference-sequences /mnt/d/ncbi_refseq06.25/ncbi-refseqs-filtered.qza \
+  --p-perc-identity 0.89 \
+  --p-strand both \
+  --p-threads 3 \
+  --o-classification taxonomy.qza \
+  --o-search-results blast-results.qza
+  --o-clustered-table table-otu.qza \
+  --o-clustered-sequences rep-seqs-otu.qza \
+  --o-new-reference-sequences new-rep-seqs-otu.qza --verbose
+
+# Etapa 6: Classificação taxonômica
+echo "Classificando sequências com classificador treinado..."
+# Se quiser maior rapidez use o "classify-sklearn", escolhemos o classify-consensus-vsearch
+
+qiime feature-classifier classify-consensus-vsearch \
+  --i-query rep-seqs-otu.qza \
+  --i-reference-reads /mnt/d/ncbi_refseq06.25/ncbi-refseqs-filtered.qza \
+  --i-reference-taxonomy /mnt/d/ncbi_refseq06.25/ncbi-refseqs-taxonomy.qza \
+  --p-perc-identity 0.96 \
+  --p-query-cov 0.92 \
+  --p-min-consensus 0.51 \
+  --p-maxaccepts 5 \
+  --p-top-hits-only \
+  --p-strand plus \
+  --p-threads 2 \
+  --o-classification taxonomy.qza \
+  --o-search-results ref_blast.qza \
+  --verbose
+
+qiime metadata tabulate \
+  --m-input-file taxonomy.qza \
+  --o-visualization taxonomy.qzv
+
+# Etapa 7: Visualização dos resultados
+echo "Gerando gráficos e tabelas de taxonomia..."
+
+qiime metadata tabulate \
+  --m-input-file metadata.txt \
+  --o-visualization sample-metadata.qzv
+
+qiime taxa barplot \
+  --i-table table-otu.qza \
+  --i-taxonomy taxonomy.qza \
+  --m-metadata-file metadata.txt \
+  --o-visualization taxa-bar-plots.qzv
+
+# Etapa 8: Exportação de resultados
+echo "Exportando resultados finais..."
+
+mkdir -p exported
+
+# sudo /home/ls28/anaconda3/envs/qiime2-amplicon-2024.10/bin/qiime tools export \
+
+qiime tools export --input-path table-otu.qza --output-path exported
+qiime tools export --input-path rep-seqs-otu.qza --output-path exported
+qiime tools export --input-path taxonomy.qza --output-path exported
+
+cd exported
+
+# Converter biom para tsv
+biom convert -i feature-table.biom -o feature-table-0.tsv --to-tsv
+
+echo "Pipeline QIIME 2 completo!"
+conda deactivate
