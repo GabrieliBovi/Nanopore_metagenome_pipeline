@@ -1,0 +1,64 @@
+#!/bin/bash
+
+###############################################################################
+echo "STEP 1: Setup and Installation of NanoCLUST"
+# Source: https://github.com/BirgitRijvers/NanoCLUST-tutorial/blob/main/Tutorial.md
+###############################################################################
+
+# Enable Conda commands
+source ~/anaconda3/etc/profile.d/conda.sh
+
+# OPTIONAL: Create and configure Conda environment
+# conda create -y --name nanoclust nextflow=22.10.6
+# conda install -y -n nanoclust -c conda-forge graphviz
+
+# Activate NanoCLUST environment
+echo "Activating Conda environment: nanoclust"
+conda activate nanoclust
+
+# OPTIONAL: Install NanoCLUST from GitHub
+# mkdir -p ~/NanoCLUST_install
+# cd ~/NanoCLUST_install
+# git clone https://github.com/genomicsITER/NanoCLUST.git
+# cd NanoCLUST
+
+# OPTIONAL: Adjust Docker container in Nextflow config (only needed if container is broken)
+# sed -i "104s|withName: consensus_classification { container = 'hecrp/nanoclust-consensus_classification'|withName: consensus_classification { container = 'ncbi/blast:latest'|" nextflow.config
+
+# OPTIONAL: Download BLAST 16S rRNA database
+# mkdir -p db/taxdb
+# wget https://ftp.ncbi.nlm.nih.gov/blast/db/16S_ribosomal_RNA.tar.gz && tar -xzvf 16S_ribosomal_RNA.tar.gz -C db
+# wget https://ftp.ncbi.nlm.nih.gov/blast/db/taxdb.tar.gz && tar -xzvf taxdb.tar.gz -C db/taxdb
+
+###############################################################################
+echo "STEP 2: Run NanoCLUST on filtered reads"
+###############################################################################
+
+# Set paths
+DB_PATH="/home/ls28/projetos_nanoclust/NanoCLUST/db/16S_ribosomal_RNA"
+TAX_PATH="/home/ls28/projetos_nanoclust/NanoCLUST/db/taxdb/"
+READS="/mnt/d/Tata_seq/filt_reads/nanofilt"
+OUTDIR="/mnt/d/Tata_seq/nanoclust"
+
+# Create output directory
+mkdir -p "$OUTDIR"
+
+# Run NanoCLUST for each filtered sample
+for file in "$READS"/*_filt.fastq; do
+  sample=$(basename "$file" _filt.fastq)
+  echo "Running NanoCLUST for sample: $sample"
+
+  nextflow run main.nf \
+    -profile docker \
+    --reads "$READS" \
+    --db "$DB_PATH" \
+    --tax "$TAX_PATH" \
+    --umap_set_size 100000 \
+    --cluster_sel_epsilon 0.65 \
+    --min_cluster_size 105 \
+    --polishing_reads 200 \
+    --outdir "$OUTDIR/$sample" \
+    --threads 6
+done
+
+echo "NanoCLUST pipeline completed."
