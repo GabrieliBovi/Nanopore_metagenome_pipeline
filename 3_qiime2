@@ -87,6 +87,7 @@ echo "Classificador treinado e avaliado com sucesso."
 ###############################################################################
 
 # Caminho de trabalho
+cd ..
 WORKDIR="/mnt/d/Tata_seq/qiime2_analysis"
 mkdir -p "$WORKDIR"
 cd "$WORKDIR"
