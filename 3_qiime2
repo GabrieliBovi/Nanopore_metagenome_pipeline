@@ -61,7 +61,7 @@ qiime rescript filter-seqs-length \
   --o-discarded-seqs discart-ncbi-refseqs.qza
 
 # Etapa 4: Filtragem da taxonomia correspondente
-echo "🔍 Filtrando taxonomia correspondente às sequências finais..."
+echo "Filtrando taxonomia correspondente às sequências finais..."
 
 qiime rescript filter-taxa \
   --i-taxonomy ncbi-refseqs-prok-taxonomy.qza \
