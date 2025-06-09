@@ -43,18 +43,23 @@ qiime rescript filter-taxa \
 
 # Etapa 3: Filtragem por comprimento específico
 echo "Filtrando sequências por comprimento por taxon..."
+#qiime rescript filter-seqs-length-by-taxon \
+#  --i-sequences ncbi-refseqs-prokaryote.qza \
+#  --i-taxonomy ncbi-refseqs-prok-taxonomy.qza \
+#  --p-labels Bacteria Archaea \
+#  --p-min-lens 1200 1200 --p-max-lens 1700 1700 \
+#  --o-filtered-seqs ncbi-refseqs-prok.qza \
+#  --o-discarded-seqs ncbi-refseqs-tooshort.qza
 
-qiime rescript filter-seqs-length-by-taxon \
+qiime taxa filter-seqs \
   --i-sequences ncbi-refseqs-prokaryote.qza \
   --i-taxonomy ncbi-refseqs-prok-taxonomy.qza \
-  --p-labels Bacteria Archaea \
-  --o-filtered-seqs ncbi-refseqs.qza \
-  --o-discarded-seqs ncbi-refseqs-tooshort.qza
+  --p-include "Bacteria,Archaea" \
+  --o-filtered-sequences ncbi-refseqs-prok.qza
 
 echo "Aplicando filtro global de comprimento: 1200-1700 pb..."
-
 qiime rescript filter-seqs-length \
-  --i-sequences ncbi-refseqs.qza \
+  --i-sequences ncbi-refseqs-prok.qza \
   --p-global-min 1200 \
   --p-global-max 1700 \
   --p-threads 4 \
@@ -63,13 +68,12 @@ qiime rescript filter-seqs-length \
 
 qiime tools export \
   --input-path ncbi-refseqs-filtered.qza \
-  --output-path silva_export
+  --output-path silva_export_fasta
 
-mv silva_export/dna-sequences.fasta ncbi-refseqs-filtered.fasta
+mv silva_export_fasta/dna-sequences.fasta silva_export_fasta/ncbi-refseqs-filtered.fasta
 
 # Etapa 4: Filtragem da taxonomia correspondente
 echo "Filtrando taxonomia correspondente às sequências finais..."
-
 qiime rescript filter-taxa \
   --i-taxonomy ncbi-refseqs-prok-taxonomy.qza \
   --m-ids-to-keep-file ncbi-refseqs-filtered.qza \
@@ -77,7 +81,6 @@ qiime rescript filter-taxa \
 
 # Etapa 5: Treinamento e avaliação do classificador
 echo "Treinando classificador com RESCRIPt..."
-
 qiime rescript evaluate-fit-classifier \
   --i-sequences ncbi-refseqs-filtered.qza \
   --i-taxonomy ncbi-refseqs-taxonomy.qza \
@@ -90,11 +93,15 @@ echo "Classificador treinado e avaliado com sucesso."
 rm -rf ncbi-refseqs-unfiltered.qza
 rm -rf ncbi-refseqs-taxonomy-unfiltered.qza
 
-#conda deactivate
+conda deactivate
 
 ###############################################################################
 # QIIME 2: Análise de amostras filtradas – Importação até Exportação
 ###############################################################################
+
+source ~/anaconda3/etc/profile.d/conda.sh
+conda activate qiime2-amplicon-2024.10
+echo "Conda environment 'qiime2-amplicon-2024.10' ativado"
 
 # Caminho de trabalho
 cd ..
@@ -106,10 +113,10 @@ cd "$WORKDIR"
 echo "Gerando arquivo de manifesto para importação..."
 
 (
-  echo "sample-id,absolute-filepath,direction"
+  echo -e "sample-id\tabsolute-filepath\tdirection"
   for f in /mnt/d/Tata_seq/filt_reads/nanofilt/*.fastq; do
     sample=$(basename "$f" .fastq)
-    echo "$sample,$(realpath "$f"),forward"
+    echo -e "$sample\t$(realpath "$f")\tforward"
   done
 ) > manifest.tsv
 
@@ -133,32 +140,24 @@ qiime vsearch dereplicate-sequences \
 # Etapa 4: Remoção de quimeras
 echo "Removendo quimeras..."
 
-qiime vsearch uchime-denovo \ ## uchime-denovo pode nao observar nenhuma quimera, tentar com --uchime_ref
+## uchime-denovo pode nao observar nenhuma quimera, tentar com --uchime_ref
+qiime vsearch uchime-denovo \
   --i-table table.qza \
   --i-sequences rep-seqs.qza \
   --o-chimeras chimeras.qza \
   --o-nonchimeras nonchimeras.qza \
-  --o-stats chimera-stats.qza
+  --o-stats chimera-stats.qza \
+  --verbose
 
-echo "Rodando --uchime_ref"
-# Exportar para FASTA (se for usar fora do QIIME)
-#qiime tools export \
-#  --input-path /mnt/d/ncbi_refseq05.25/ncbi-refseqs-filtered.qza \
-#  --output-path ncbi-refseq
-
-#mv ncbi-refseq/dna-sequences.fasta ncbi-refseq/ncbi-refseqs.fasta
-
-#for fasta in fasta_parts/*.fasta; do
-#  base=$(basename "$fasta" .fasta)
-#  echo "Processando $base"
-
-#vsearch --uchime_ref "$fasta" \
-#        --db ncbi-refseq/ncbi-refseqs.fasta \
-#        --nonchimeras chimera_out/${base}_ncbi_nonchimeras.fasta \
-#        --chimeras chimera_out/${base}_ncbi_chimeras.fasta \
-#        --uchimeout chimera_out/${base}_ncbi_stats.txt \
-#        --threads 6
-#done
+qiime vsearch uchime-ref \
+  --i-table table.qza \
+  --i-sequences rep-seqs.qza \
+  --i-reference-sequences /mnt/d/ncbi_refseq06.25/ncbi-refseqs-filtered.qza \
+  --o-nonchimeras nonchimeras.qza \
+  --o-chimeras chimeras.qza \
+  --o-stats chimera-stats.qza \
+  --p-threads 5 \
+  --verbose
 
 qiime feature-table filter-features \
   --i-table table.qza \
@@ -172,7 +171,7 @@ qiime feature-table filter-seqs \
 
 # Etapa 5: Clustering de OTUs
 echo "Clusterizando OTUs a 89% de identidade..."
-# Pode tentar com "qiime vsearch cluster-features-de-novo", mas se os aruivos forem muito grandes, recomendamos: 
+# Pode tentar com "qiime vsearch cluster-features-de-novo", mas se os arquivos forem muito grandes, recomendamos: 
 
 qiime vsearch cluster-features-open-reference \
   --i-table table-nonchimeric.qza \
