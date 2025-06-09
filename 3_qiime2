@@ -152,7 +152,7 @@ qiime vsearch uchime-denovo \
 qiime vsearch uchime-ref \
   --i-table table.qza \
   --i-sequences rep-seqs.qza \
-  --i-reference-sequences /mnt/d/ncbi_refseq06.25/ncbi-refseqs-filtered.qza \
+  --i-reference-sequences /mnt/d/DataBases/ncbi_refseq06.25/ncbi-refseqs-filtered.qza \
   --o-nonchimeras nonchimeras.qza \
   --o-chimeras chimeras.qza \
   --o-stats chimera-stats.qza \
