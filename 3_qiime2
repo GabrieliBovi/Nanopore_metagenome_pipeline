@@ -1,24 +1,11 @@
 #!/bin/bash
-#conda env create \
-#  --name qiime2-amplicon-2025.4 \
-#  --file https://raw.githubusercontent.com/qiime2/distributions/refs/heads/dev/2025.4/amplicon/released/qiime2-amplicon-ubuntu-latest-conda.yml
-# conda install --force-reinstall r-base r-essentials rpy2 -c conda-forge
+
 # qiime dev refresh-cache # Instale o plugin RESCRIPt
 # conda install bioconda::biom-format # Instale o plugin RESCRIPt
 
 ###############################################################################
 # QIIME 2 + RESCRIPt: Criação de Banco NCBI 16S e Treinamento de Classificador
 ###############################################################################
-cd /mnt/d/DataBases/
-qiime rescript filter-seqs-length-by-taxon \
-  --i-sequences ncbi-refseqs-prokaryote.qza \
-  --i-taxonomy ncbi-refseqs-prok-taxonomy.qza \
-  --p-labels Bacteria Archaea \
-  --p-min-lens 1200 1200 \
-  --p-max-lens 1700 1700 \
-  --o-filtered-seqs ncbi-refseqs.qza \
-  --o-discarded-seqs ncbi-refseqs-tooshort.qza
-
 
 # Caminho para diretório de saída
 OUTPUT_DIR="/mnt/d/DataBases/ncbi_refseq06.25"
@@ -102,6 +89,8 @@ qiime rescript evaluate-fit-classifier \
 echo "Classificador treinado e avaliado com sucesso."
 rm -rf ncbi-refseqs-unfiltered.qza
 rm -rf ncbi-refseqs-taxonomy-unfiltered.qza
+
+#conda deactivate
 
 ###############################################################################
 # QIIME 2: Análise de amostras filtradas – Importação até Exportação
