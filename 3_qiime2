@@ -141,13 +141,13 @@ qiime vsearch dereplicate-sequences \
 echo "Removendo quimeras..."
 
 ## uchime-denovo pode nao observar nenhuma quimera, tentar com --uchime_ref
-qiime vsearch uchime-denovo \
-  --i-table table.qza \
-  --i-sequences rep-seqs.qza \
-  --o-chimeras chimeras.qza \
-  --o-nonchimeras nonchimeras.qza \
-  --o-stats chimera-stats.qza \
-  --verbose
+#qiime vsearch uchime-denovo \
+#  --i-table table.qza \
+#  --i-sequences rep-seqs.qza \
+#  --o-chimeras chimeras.qza \
+#  --o-nonchimeras nonchimeras.qza \
+#  --o-stats chimera-stats.qza \
+#  --verbose
 
 qiime vsearch uchime-ref \
   --i-table table.qza \
@@ -170,37 +170,37 @@ qiime feature-table filter-seqs \
   --o-filtered-data rep-seqs-nonchimeric.qza
 
 # Etapa 5: Clustering de OTUs
-echo "Clusterizando OTUs a 89% de identidade..."
+echo "Clusterizando OTUs a 89% e 99% de identidade..."
 # Pode tentar com "qiime vsearch cluster-features-de-novo", mas se os arquivos forem muito grandes, recomendamos: 
 
 qiime vsearch cluster-features-open-reference \
   --i-table table-nonchimeric.qza \
   --i-sequences rep-seqs-nonchimeric.qza \
-  --i-reference-sequences /mnt/d/ncbi_refseq06.25/ncbi-refseqs-filtered.qza \
+  --i-reference-sequences /mnt/d/DataBases/ncbi_refseq06.25/ncbi-refseqs-filtered.qza \
   --p-perc-identity 0.89 \
   --p-strand both \
-  --p-threads 3 \
-  --o-classification taxonomy.qza \
-  --o-search-results blast-results.qza
-  --o-clustered-table table-otu.qza \
-  --o-clustered-sequences rep-seqs-otu.qza \
-  --o-new-reference-sequences new-rep-seqs-otu.qza --verbose
+  --p-threads 4 \
+  --output-dir cluster_89 \
+  --verbose
+
+cd cluster_89
+#cd cluster_99
 
 # Etapa 6: Classificação taxonômica
 echo "Classificando sequências com classificador treinado..."
 # Se quiser maior rapidez use o "classify-sklearn", escolhemos o classify-consensus-vsearch
 
 qiime feature-classifier classify-consensus-vsearch \
-  --i-query rep-seqs-otu.qza \
-  --i-reference-reads /mnt/d/ncbi_refseq06.25/ncbi-refseqs-filtered.qza \
-  --i-reference-taxonomy /mnt/d/ncbi_refseq06.25/ncbi-refseqs-taxonomy.qza \
-  --p-perc-identity 0.96 \
+  --i-query clustered_sequences.qza \
+  --i-reference-reads /mnt/d/DataBases/ncbi_refseq06.25/ncbi-refseqs-filtered.qza \
+  --i-reference-taxonomy /mnt/d/DataBases/ncbi_refseq06.25/ncbi-refseqs-taxonomy.qza \
+  --p-perc-identity 0.97 \
   --p-query-cov 0.92 \
   --p-min-consensus 0.51 \
   --p-maxaccepts 5 \
   --p-top-hits-only \
   --p-strand plus \
-  --p-threads 2 \
+  --p-threads 4 \
   --o-classification taxonomy.qza \
   --o-search-results ref_blast.qza \
   --verbose
@@ -217,9 +217,9 @@ qiime metadata tabulate \
   --o-visualization sample-metadata.qzv
 
 qiime taxa barplot \
-  --i-table table-otu.qza \
+  --i-table clustered_table.qza \
   --i-taxonomy taxonomy.qza \
-  --m-metadata-file metadata.txt \
+  --m-metadata-file /mnt/d/Tata_seq/qiime2_analysis/metadata.txt \
   --o-visualization taxa-bar-plots.qzv
 
 # Etapa 8: Exportação de resultados
@@ -229,8 +229,8 @@ mkdir -p exported
 
 # sudo /home/ls28/anaconda3/envs/qiime2-amplicon-2024.10/bin/qiime tools export \
 
-qiime tools export --input-path table-otu.qza --output-path exported
-qiime tools export --input-path rep-seqs-otu.qza --output-path exported
+qiime tools export --input-path clustered_table.qza --output-path exported
+qiime tools export --input-path clustered_sequences.qza --output-path exported
 qiime tools export --input-path taxonomy.qza --output-path exported
 
 cd exported
