@@ -60,10 +60,10 @@ for sample in "$INPUT_DIR"/*.fastq.gz; do
     name=$(basename "$sample" .fastq.gz)
 
     echo "Trimming adapters with Porechop: $name"
-    porechop -i "$sample" --threads 7 > "filt_reads/porechop/${name}_trimmed.fastq"
+   # porechop -i "$sample" --threads 7 > "filt_reads/porechop/${name}_trimmed.fastq"
 
     echo "Filtering reads with NanoFilt: $name"
-    NanoFilt --quality 10 --length 1200 --maxlength 1700 \
+    NanoFilt --quality 9 --length 1200 --maxlength 1700 \
         < "filt_reads/porechop/${name}_trimmed.fastq" \
         > "filt_reads/nanofilt/${name}_filt.fastq"
 done
