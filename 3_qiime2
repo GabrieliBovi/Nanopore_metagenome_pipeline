@@ -137,36 +137,60 @@ qiime vsearch dereplicate-sequences \
   --o-dereplicated-table table.qza \
   --o-dereplicated-sequences rep-seqs.qza
 
+# Etapa 4: Pré-clusterizaçao - Referencia
+echo "Pré-clusterizaçao..."
+
+qiime vsearch cluster-features-open-reference \
+  --i-table table.qza \
+  --i-sequences rep-seqs.qza \
+  --i-reference-sequences /mnt/d/DataBases/ncbi_refseq06.25/ncbi-refseqs-filtered.qza \
+  --p-perc-identity 0.98 \
+  --p-strand both \
+  --p-threads 4 \
+  --output-dir pre-cluster_98 \
+  --verbose
+
+qiime vsearch cluster-features-open-reference \
+  --i-table table.qza \
+  --i-sequences rep-seqs.qza \
+  --i-reference-sequences /mnt/d/DataBases/ncbi_refseq06.25/ncbi-refseqs-filtered.qza \
+  --p-perc-identity 0.97 \
+  --p-strand both \
+  --p-threads 4 \
+  --output-dir pre-cluster_97 \
+  --verbose
+
+
 # Etapa 4: Remoção de quimeras
 echo "Removendo quimeras..."
 
 ## uchime-denovo pode nao observar nenhuma quimera, tentar com --uchime_ref
-#qiime vsearch uchime-denovo \
-#  --i-table table.qza \
-#  --i-sequences rep-seqs.qza \
-#  --o-chimeras chimeras.qza \
-#  --o-nonchimeras nonchimeras.qza \
-#  --o-stats chimera-stats.qza \
-#  --verbose
+qiime vsearch uchime-denovo \
+  --i-table pre-cluster_98/table-otu-98.qza \
+  --i-sequences pre-cluster_98/rep-seqs-otu-98.qza \
+  --o-chimeras chimeras.qza \
+  --o-nonchimeras nonchimeras.qza \
+  --o-stats chimera-stats.qza \
+  --verbose
 
 qiime vsearch uchime-ref \
-  --i-table table.qza \
-  --i-sequences rep-seqs.qza \
+  --i-table pre-cluster_98/table-otu-98.qza \
+  --i-sequences pre-cluster_98/rep-seqs-otu-98.qza \
   --i-reference-sequences /mnt/d/DataBases/ncbi_refseq06.25/ncbi-refseqs-filtered.qza \
-  --o-nonchimeras nonchimeras.qza \
-  --o-chimeras chimeras.qza \
-  --o-stats chimera-stats.qza \
+  --o-nonchimeras nonchimeras-ref.qza \
+  --o-chimeras chimeras-ref.qza \
+  --o-stats chimera-stats-ref.qza \
   --p-threads 5 \
   --verbose
 
 qiime feature-table filter-features \
-  --i-table table.qza \
-  --m-metadata-file nonchimeras.qza \
+  --i-table pre-cluster_98/table-otu-98.qza \
+  --m-metadata-file nonchimeras-ref.qza \
   --o-filtered-table table-nonchimeric.qza
 
 qiime feature-table filter-seqs \
-  --i-data rep-seqs.qza \
-  --m-metadata-file nonchimeras.qza \
+  --i-data pre-cluster_98/rep-seqs-otu-98.qza \
+  --m-metadata-file nonchimeras-ref.qza \
   --o-filtered-data rep-seqs-nonchimeric.qza
 
 # Etapa 5: Clustering de OTUs
@@ -177,10 +201,10 @@ qiime vsearch cluster-features-open-reference \
   --i-table table-nonchimeric.qza \
   --i-sequences rep-seqs-nonchimeric.qza \
   --i-reference-sequences /mnt/d/DataBases/ncbi_refseq06.25/ncbi-refseqs-filtered.qza \
-  --p-perc-identity 0.89 \
+  --p-perc-identity 0.97 \
   --p-strand both \
   --p-threads 4 \
-  --output-dir cluster_89 \
+  --output-dir cluster_97 \
   --verbose
 
 cd cluster_89
