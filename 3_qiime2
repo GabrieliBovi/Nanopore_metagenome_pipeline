@@ -166,16 +166,16 @@ echo "Removendo quimeras..."
 
 ## uchime-denovo pode nao observar nenhuma quimera, tentar com --uchime_ref
 qiime vsearch uchime-denovo \
-  --i-table pre-cluster_98/table-otu-98.qza \
-  --i-sequences pre-cluster_98/rep-seqs-otu-98.qza \
+  --i-table table.qza \
+  --i-sequences rep-seqs.qza \
   --o-chimeras chimeras.qza \
   --o-nonchimeras nonchimeras.qza \
   --o-stats chimera-stats.qza \
   --verbose
 
 qiime vsearch uchime-ref \
-  --i-table pre-cluster_98/table-otu-98.qza \
-  --i-sequences pre-cluster_98/rep-seqs-otu-98.qza \
+  --i-table table.qza \
+  --i-sequences rep-seqs.qza \
   --i-reference-sequences /mnt/d/DataBases/ncbi_refseq06.25/ncbi-refseqs-filtered.qza \
   --o-nonchimeras nonchimeras-ref.qza \
   --o-chimeras chimeras-ref.qza \
