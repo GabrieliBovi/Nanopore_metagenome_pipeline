@@ -140,7 +140,7 @@ qiime vsearch dereplicate-sequences \
 # Etapa 4: Pré-clusterizaçao - Referencia
 echo "Pré-clusterizaçao..."
 
-qiime vsearch cluster-features-open-reference \
+qiime vsearch cluster-features-open-reference \                 #nao funcionou 
   --i-table table.qza \
   --i-sequences rep-seqs.qza \
   --i-reference-sequences /mnt/d/DataBases/ncbi_refseq06.25/ncbi-refseqs-filtered.qza \
@@ -150,7 +150,7 @@ qiime vsearch cluster-features-open-reference \
   --output-dir pre-cluster_98 \
   --verbose
 
-qiime vsearch cluster-features-open-reference \
+qiime vsearch cluster-features-open-reference \               #nao funcionou 
   --i-table table.qza \
   --i-sequences rep-seqs.qza \
   --i-reference-sequences /mnt/d/DataBases/ncbi_refseq06.25/ncbi-refseqs-filtered.qza \
@@ -164,8 +164,8 @@ qiime vsearch cluster-features-open-reference \
 # Etapa 4: Remoção de quimeras
 echo "Removendo quimeras..."
 
-## uchime-denovo pode nao observar nenhuma quimera, tentar com --uchime_ref
-qiime vsearch uchime-denovo \
+## uchime-denovo pode nao observar nenhuma quimera, tentar com --uchime_ref  
+qiime vsearch uchime-denovo \                                                 #nao funcionou 
   --i-table table.qza \
   --i-sequences rep-seqs.qza \
   --o-chimeras chimeras.qza \
@@ -184,12 +184,12 @@ qiime vsearch uchime-ref \
   --verbose
 
 qiime feature-table filter-features \
-  --i-table pre-cluster_98/table-otu-98.qza \
+  --i-table table.qza \
   --m-metadata-file nonchimeras-ref.qza \
   --o-filtered-table table-nonchimeric.qza
 
 qiime feature-table filter-seqs \
-  --i-data pre-cluster_98/rep-seqs-otu-98.qza \
+  --i-data rep-seqs.qza \
   --m-metadata-file nonchimeras-ref.qza \
   --o-filtered-data rep-seqs-nonchimeric.qza
 
@@ -197,18 +197,35 @@ qiime feature-table filter-seqs \
 echo "Clusterizando OTUs a 89% e 99% de identidade..."
 # Pode tentar com "qiime vsearch cluster-features-de-novo", mas se os arquivos forem muito grandes, recomendamos: 
 
-qiime vsearch cluster-features-open-reference \
+qiime vsearch cluster-features-de-novo \
   --i-table table-nonchimeric.qza \
   --i-sequences rep-seqs-nonchimeric.qza \
-  --i-reference-sequences /mnt/d/DataBases/ncbi_refseq06.25/ncbi-refseqs-filtered.qza \
-  --p-perc-identity 0.97 \
+  --p-perc-identity 0.96 \
   --p-strand both \
-  --p-threads 4 \
-  --output-dir cluster_97 \
+  --p-threads 6 \
+  --output-dir cluster_96 \
   --verbose
 
-cd cluster_89
-#cd cluster_99
+qiime vsearch cluster-features-de-novo \
+  --i-table table-nonchimeric.qza \
+  --i-sequences rep-seqs-nonchimeric.qza \
+  --p-perc-identity 0.95 \
+  --p-strand both \
+  --p-threads 6 \
+  --output-dir cluster_95 \
+  --verbose
+
+qiime vsearch cluster-features-de-novo \
+  --i-table table-nonchimeric.qza \
+  --i-sequences rep-seqs-nonchimeric.qza \
+  --p-perc-identity 0.94 \
+  --p-strand both \
+  --p-threads 6 \
+  --output-dir cluster_94 \
+  --verbose
+
+# cd cluster_95
+# cd cluster_94
 
 # Etapa 6: Classificação taxonômica
 echo "Classificando sequências com classificador treinado..."
