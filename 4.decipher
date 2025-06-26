@@ -1,0 +1,194 @@
+# Carregamentos
+library(Biostrings)
+library(DECIPHER)
+library(phyloseq)
+library(vegan)
+library(tidyverse)
+library(reshape2)
+library(writexl)
+#library(qiime2R)
+#if (!requireNamespace("devtools", quietly = TRUE)){install.packages("devtools")}
+#devtools::install_github("jbisanz/qiime2R")
+
+library(biomformat)
+
+# Caminhos
+fasta_file <- "dna-sequences.fasta"
+biom_file <- "feature-table.biom"
+metadata_file <- "metadados.txt"
+
+# 1. Importa os dados
+seqs_original <- readDNAStringSet(fasta_file)
+biom_obj <- read_biom(biom_file)
+otu_mat_orig <- as.matrix(biom_data(biom_obj))
+otu_tab_orig <- otu_table(otu_mat_orig, taxa_are_rows =TRUE)
+sample_names(otu_tab_orig) <- make.names(sample_names(otu_tab_orig))  # Corrige nomes
+dim(otu_mat_orig)
+str(otu_mat_orig)
+
+# PARA TESTAR COM AS 200 PRIMEIRAS SEQUENCIAS
+seqs <- seqs_original[1:100]
+otu_ids <- names(seqs)  # nomes das OTUs
+otu_mat <- otu_mat_orig[otu_ids, ]  # seleciona linhas = OTUs
+otu_tab <- otu_table(otu_mat, taxa_are_rows = TRUE)
+dim(otu_mat)
+
+# 2. Taxonomia com DECIPHER
+load("SILVA_SSU_r138_2019.RData")
+ids <- IdTaxa(seqs, trainingSet, strand="both", processors=6, verbose=TRUE) #threshold = 80,
+saveRDS(ids, file = "ids_taxa_result.rds")
+#ids <- readRDS("ids_taxa_result.rds")
+
+ranks <- c("domain","phylum","class","order","family","genus","species")
+taxid <- t(sapply(ids, function(x) {
+  taxa <- x$taxon[match(ranks, x$rank)]
+  taxa[startsWith(taxa, "unclassified_")] <- NA
+  taxa
+}))
+
+rownames(taxid) <- otu_ids
+colnames(taxid) <- ranks
+
+# 3. Criação do objeto phyloseq
+ps <- phyloseq(otu_tab, tax_table(taxid), refseq(seqs))
+
+identical(rownames(tax_table(ps)), rownames(otu_table(ps)))  # Deve ser TRUE
+identical(rownames(tax_table(ps)), names(refseq(ps)))        # Deve ser TRUE
+all(names(seqs) %in% rownames(otu_tab))     # Deve ser TRUE
+all(rownames(taxid) %in% rownames(otu_tab)) # Deve ser TRUE
+#saveRDS(ps, file = "ps_silva.rds")
+
+# 4. Tabela de abundância relativa + taxonomia
+ps <- readRDS("ps_silva.rds")
+
+meta <- read.table("metadados.txt", sep="\t", header=TRUE)
+rownames(meta) <- make.names(meta$sampleName)
+order_samples <- paste0(meta$sampleName)
+seqtab <- prune_samples(rownames(meta) %in% order_samples, ps)
+sample_data(seqtab) <- sample_data(meta)
+
+otu_rel <- apply(otu_table(seqtab), 2, function(x) x / sum(x) * 100)
+otu_df <- melt(otu_rel) %>%
+  rename(OTU = Var1, Sample = Var2, `Abundância relativa (%)` = value) %>% as.data.frame()
+  
+taxa_df <- tax_table(seqtab) %>% as.data.frame() 
+taxa_df$OTU <- rownames(taxa_df)
+merged_df <- merge(otu_df, taxa_df, by="OTU")
+colnames(merged_df) <- c("OTU", "Sample", "Abundância relativa (%)", "Domínio", "Filo", "Classe", "Ordem", "Família", "Gênero", "Espécie")
+#write_xlsx(merged_df, "abundancia_taxa_relativa.xlsx")
+
+# 5. Rarefação
+par(cex.axis =0.7, cex.lab =0.7)
+otu_matrix <- as(otu_table(seqtab), "matrix")
+if (taxa_are_rows(otu_table(seqtab))) {
+  otu_matrix <- t(otu_matrix)
+}
+rarecurve(otu_matrix,
+          step = 500, cex = 0.6, xlab = "Sample size",
+          ylab = "Species", label = "true", bty = "L", family = "serif")
+
+# 6. Índices de diversidade
+library(devtools)
+otu_mat <- as(otu_table(seqtab), "matrix")
+if (taxa_are_rows(seqtab)) {
+  otu_mat <- t(otu_mat)
+}
+a <- goods(otu_mat) %>% as.data.frame() %>% rownames_to_column(var = "Samples")
+b <- estimate_richness(seqtab, measures = c("Observed", "Chao1", "ACE", "Shannon", "Simpson", "InvSimpson", "Fisher")) %>% 
+  select(-c("se.chao1", "se.ACE"))
+
+indices <- bind_cols(a, b)
+indices_tabela <- indices[,c("Samples", "Observed", "Chao1", "ACE", "Shannon", "Simpson", "InvSimpson", "Fisher", "no.seqs", "no.sing", "goods")]
+goods_coverage <- 1 - (apply(otu_table(seqtab), 2, function(x) sum(x == 1)) / colSums(otu_table(seqtab)))
+indices_final <- cbind(indices_tabela, Coverage = goods_coverage)
+#write_xlsx(indices_final,"indices_alpha_diversity.xlsx")
+
+# 7. Gráfico de barras por nível taxonômico (ajustável por 'taxrank')
+# Leitura de dados
+ps <- readRDS("ps_silva.rds")
+samdf <- read.table("metadados.txt", header=TRUE, encoding="UTF-8", sep="\t")
+
+taxrank <- "phylum"              # Nível taxonômico
+abund_min <- 0                   # Filtro de abundância mínima (em %)
+categoria_others <- TRUE         # Incluir grupo "Others"
+esconder_unclassified <- FALSE   # Exibir "Unclassified" na legenda
+
+# Aglomeração por nível taxonômico
+rank_seqtab <- tax_glom(seqtab, taxrank = taxrank, NArm = FALSE)
+
+# Extrai nomes taxonômicos diretamente das colunas (OTUs)
+otu_counts <- as(otu_table(rank_seqtab), "matrix")
+if (!taxa_are_rows(rank_seqtab)) {
+  otu_counts <- t(otu_counts)
+}
+print(otu_counts)
+
+# Agora taxa_vec corresponde às **linhas**, não colunas
+taxa_tab <- tax_table(rank_seqtab)[, taxrank, drop = FALSE]
+taxa_vec <- as.character(taxa_tab[,1])
+taxa_vec[is.na(taxa_vec)] <- "Unclassified"
+rownames(otu_counts) <- taxa_vec
+print(taxa_vec)
+
+# Soma por taxon e cálculo de abundância relativa global
+abund_total_taxa <- rowSums(otu_counts)    # soma por taxa (linhas)
+abund_percent_taxa <- abund_total_taxa / sum(abund_total_taxa) * 100
+taxa_to_keep <- names(abund_percent_taxa[abund_percent_taxa >= abund_min])
+otu_filt <- otu_counts[taxa_to_keep, , drop = FALSE]
+print(otu_filt)
+
+# Adição de "Others"
+if (categoria_others) {
+  taxa_others <- setdiff(rownames(otu_counts), taxa_to_keep)
+  if (length(taxa_others) > 0) {
+    others_col <- colSums(otu_counts[taxa_others, , drop = FALSE])
+    otu_filt <- rbind(otu_filt, Others = others_col)
+  }
+}
+
+# Transforma em abundância relativa por amostra
+otu_rel <- sweep(otu_filt, 2, colSums(otu_filt), FUN = "/") * 100  # normalizar por coluna (amostra)
+otu_rel[is.na(otu_rel)] <- 0
+print(otu_rel)
+
+# Formato tidy para ggplot
+otu_df <- reshape2::melt(otu_rel, varnames = c("Taxa", "Sample"), value.name = "Abundancia")
+print(otu_df)
+
+# Corrigir nome da coluna de amostra no metadata se necessário
+# Verifique nomes com: 
+otu_df <- merge(otu_df, samdf, by.x = "Sample", by.y = "sampleName")  # ajuste "sampleName" se necessário
+print(otu_df)
+
+# Reordena níveis de taxa para mostrar Others e Unclassified por último
+taxa_levels <- sort(unique(otu_df$Taxa))
+taxa_levels <- c(setdiff(taxa_levels, c("Others", "Unclassified")),
+                 intersect(c("Others", "Unclassified"), taxa_levels))
+otu_df$Taxa <- factor(otu_df$Taxa, levels = taxa_levels)
+print(taxa_levels)
+
+# Plot final
+barra_tax <- ggplot(otu_df, aes(x = Sample, y = Abundancia, fill = Taxa)) +
+  geom_col(position = "stack") +
+  theme_bw(base_size = 12) +
+  labs(fill = str_to_title(taxrank), y = "Abundance (%)") +
+  theme(
+    aspect.ratio = 1.5,
+    panel.spacing = unit(-.1, "lines"),
+    text = element_text(family = "serif", color = "black"),
+    strip.placement = "outside",
+    strip.background = element_blank(),
+    strip.text = element_text(size = 12, face = "bold"),
+    axis.title.x = element_blank(),
+    axis.text.x = element_text(size = 12, angle = 30, hjust = 1),
+    axis.text.y = element_text(size = 13),
+    legend.text = element_text(size = 9),
+    legend.title = element_text(size = 12),
+    legend.key.size = unit(0.7, "lines")
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0.01, 0.01)), labels = function(x) paste0(x, "%")) +
+  scale_x_discrete(expand = expansion(mult = c(0.08, 0.08)))
+
+print(barra_tax)
+# Exemplo para salvar
+# ggsave('figuras/barra_phylum.tiff', plot = barra_tax, height = 1500, width = 2800, units = "px", dpi = 300)
