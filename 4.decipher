@@ -9,8 +9,18 @@ library(writexl)
 #library(qiime2R)
 #if (!requireNamespace("devtools", quietly = TRUE)){install.packages("devtools")}
 #devtools::install_github("jbisanz/qiime2R")
-
 library(biomformat)
+
+# No qiime2
+qiime tools export \
+  --input-path feature-table.qza \
+  --output-path exported_table
+
+biom convert \
+  -i exported_table/feature-table.biom \
+  -o exported_table/feature-table-json.biom \
+  --to-json
+
 
 # Caminhos
 fasta_file <- "dna-sequences.fasta"
