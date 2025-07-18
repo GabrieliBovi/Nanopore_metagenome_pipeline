@@ -45,6 +45,7 @@ echo "STEP 2: Trimming and Filtering"
 # (Optional) Create the Conda environment:
 # conda create -y -n nanotrim python=3.8
 # conda install -y -n nanotrim -c bioconda porechop nanofilt
+# conda install bioconda::filtlong
 
 # Activate environment for trimming tools
 echo "Activating Conda environment: nanotrim"
